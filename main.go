@@ -1,67 +1,55 @@
 package main
 
 import (
-	"fmt"
+	"context"
 	"strings"
+	"time"
 
 	"github.com/Lunarisnia/socrates"
+	"github.com/Lunarisnia/stream-plays/internal/controller"
 	"github.com/Lunarisnia/stream-plays/internal/keysim"
-	"github.com/micmonay/keybd_event"
+	"github.com/Lunarisnia/stream-plays/internal/lcservice"
 )
 
 func main() {
+	ctx := context.Background()
+	lcService, err := lcservice.NewService(ctx)
+	if err != nil {
+		panic(err)
+	}
 	ks, err := keysim.NewKeySim()
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("Keysim initiated")
+
 	socrates.Init("lunarisnia")
+	commandPrefix := "!mock "
 	for {
-		chatContainer, err := socrates.MonitorThreshold(1, "!move ", true)
+		controllerService := controller.NewController(ks)
+
+		youtubeContainer, err := lcService.Poll()
 		if err != nil {
 			panic(err)
 		}
-		moveHistory := chatContainer.FindPrefix("!move ")
-
-		decisionCounter := map[string]int{
-			"up":    0,
-			"down":  0,
-			"left":  0,
-			"right": 0,
-		}
-		for _, chat := range moveHistory {
-			command := strings.ToLower(strings.TrimPrefix(chat.Content, "!move "))
-			switch command {
-			case "up":
-				decisionCounter["up"]++
-			case "down":
-				decisionCounter["down"]++
-			case "left":
-				decisionCounter["left"]++
-			case "right":
-				decisionCounter["right"]++
-			default:
-				fmt.Println("Ngetik yang bener woy!")
-			}
+		for _, chat := range youtubeContainer.FindPrefix(commandPrefix) {
+			command := strings.TrimPrefix(chat.Content, commandPrefix)
+			controllerService.CastVote(command)
 		}
 
-		finalCommand := ""
-		prevHighest := 0
-		for key, val := range decisionCounter {
-			if val > prevHighest {
-				prevHighest = val
-				finalCommand = key
-			}
+		tiktokContainer, err := socrates.Monitor(2*time.Second, true)
+		if err != nil {
+			panic(err)
 		}
-
-		keyMap := map[string]int{
-			"up":    keybd_event.VK_W,
-			"down":  keybd_event.VK_S,
-			"left":  keybd_event.VK_A,
-			"right": keybd_event.VK_D,
+		for _, chat := range tiktokContainer.FindPrefix(commandPrefix) {
+			command := strings.TrimPrefix(chat.Content, commandPrefix)
+			controllerService.CastVote(command)
 		}
-		fmt.Printf("Pressing %v (%v votes)\n", finalCommand, prevHighest)
-		ks.Press(keyMap[finalCommand])
+		controllerService.Execute()
 
+		// moveHistory := chatContainer.FindPrefix("!mock ")
+		// for _, move := range moveHistory {
+		// 	fmt.Println(move.Username, "said", move.Content)
+		// }
 	}
+
 }
